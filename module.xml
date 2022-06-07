@@ -5,7 +5,7 @@
   <Version>1.0.0</Version>
   <Dependencies>
     <ModuleReference>
-      <Name>isc.rest</Name>
+      <Name>isc.json</Name>
       <Version>^1.0.0</Version>
     </ModuleReference>
   </Dependencies>
