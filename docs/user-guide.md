@@ -1,4 +1,11 @@
-# isc.ipm.js User Guide
+# isc.ipm.js User Guide <!-- omit in toc -->
+
+- [Prerequisites](#prerequisites)
+- [Overview](#overview)
+- [Notes on Conventions](#notes-on-conventions)
+- [Angular Build Process Automation](#angular-build-process-automation)
+- [Web application for Angular Path Location Strategy](#web-application-for-angular-path-location-strategy)
+- [OpenAPI-based client code generation](#openapi-based-client-code-generation)
 
 ## Prerequisites
 
