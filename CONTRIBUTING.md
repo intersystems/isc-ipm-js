@@ -6,8 +6,6 @@ Thank you for your interest in contributing! While this project originated at In
 
 If you have made a change that you would like to contribute back to the community, please send a [GitHub Pull Request](/pull/new/master) explaining it. If your change fixes an issue that you or another user reported, please mention it in the pull request. You can find out more about pull requests [here](http://help.github.com/pull-requests/).
 
-Note that for this project we will not usually merge pull requests directly; we will vet them and fold them into an internal source of record for the package, then publish changes back out and close the PR.
-
 ## Coding conventions
 
 Generally speaking, just try to match the conventions you see in the code you are reading. For this project, these include:
