@@ -33,7 +33,7 @@ We use [SemVer](http://semver.org/) for versioning. Declare your dependencies us
 ## Authors
 * **Tim Leavitt** - *Initial implementation* - [isc-tleavitt](http://github.com/isc-tleavitt)
 
-See also the list of [contributors](https://github.com/intersystems/isc-json/graphs/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/intersystems/isc-ipm-js/graphs/contributors) who participated in this project.
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/intersystems/isc-json/blob/master/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/intersystems/isc-ipm-js/blob/master/LICENSE) file for details.
