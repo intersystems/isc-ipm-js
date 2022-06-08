@@ -49,7 +49,7 @@ Automated build processes in this tool run npm ci for predictability and repeata
 
 ## Angular Build Process Automation
 
-isc.ipm.js will automatically run npm ci and ng build on your Angular UI as part of the InterSystems package manager lifecycle. Note that this requires an appropriate node and npm version to be installed for your target Angular version.
+isc.ipm.js will automatically run `npm ci` and `ng build` on your Angular UI as part of the InterSystems package manager lifecycle. Note that this requires an appropriate node and npm version to be installed for your target Angular version.
 
 In module.xml, define a resource pointing to your Angular application root with ProcessorClass set to pkg.isc.ipm.js.angular.processor:
 ```
@@ -58,7 +58,13 @@ In module.xml, define a resource pointing to your Angular application root with 
 </Resource>
 ```
 
-When you package your solution (e.g., via `zpm "your-app package"`) the *built* Angular UI will be included, so the build will not need to run for clients downloading your package from a registry (e.g., using [zpm-registry](https://openexchange.intersystems.com/package/zpm-registry)).
+After the build completes, the hash of package.json and package-lock.json are stored, and npm ci will not run again unless those change (or you indicate that install should be forced).
+
+The angular build process accepts two flags (in relevant zpm module lifecycle commands) to control its behavior:
+* `-DAngular.NoBuild=1` will suppress the npm install and Angular build (useful, for example, to load in updates to classes only)
+* `-DAngular.ForceInstall=1` will force running `npm ci` even if it seems unnecessary (that is, package.json and package-lock.json are unchanged)
+
+When you package your solution (e.g., via `zpm "your-app publish"`) the *built* Angular UI will be included, so the build will not need to run for clients downloading your package from a registry (e.g., using [zpm-registry](https://openexchange.intersystems.com/package/zpm-registry)).
 
 ## Web application for Angular Path Location Strategy
 
