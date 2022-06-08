@@ -1,4 +1,4 @@
-/// AppS.CCR.AngularCCREventHandler, but modified for Package Manager use
+/// Resource processor class to manage Angular build, deployment, and packaging
 Class pkg.isc.ipm.js.angular.processor Extends %ZPM.PackageManager.Developer.Processor.Abstract
 {
 
@@ -21,7 +21,7 @@ Property clearTarget As %Boolean [ InitialExpression = 1 ];
 Property appName As %String;
 
 /// Either "install" or "ci"; default is "ci"
-Property installCommand As %String(VALUELIST=",install,ci") [ InitialExpression = "ci" ];
+Property installCommand As %String(VALUELIST = ",install,ci") [ InitialExpression = "ci" ];
 
 Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
 {
@@ -121,51 +121,87 @@ Method RunAngularBuild(ByRef pParams) [ Internal ]
 	}
 
 	Set verbose = $Get(pParams("Verbose"),0)
-	Set buildDirectory = ..ResourceReference.Module.Root _ ..ResourceReference.Name
-	Set buildScript = ##class(%Library.File).NormalizeFilename(..#BUILDSCRIPT, buildDirectory)
-	Set stream = ##class(%Stream.FileBinary).%New()
-	$$$ThrowOnError(stream.LinkToFile(buildScript))
-	Do ..GenerateBuildScript(buildDirectory,stream,verbose)
-	$$$ThrowOnError(stream.%Save())
-	
 	If verbose {
 		Write !!,"Running Angular build script...",!
 	}
+
+	Set buildDirectory = ##class(%Library.File).NormalizeDirectory(..ResourceReference.Module.Root _ ..ResourceReference.Name)
+
+	If ..NeedToInstall(buildDirectory) || ($Data(pParams("Angular","ForceInstall"),flag)#2 && flag) {
+		// First stage: npm ci
+		Set npm(0) = "npm"
+		Set npm($i(npm)) = ..installCommand
+		Set npm($i(npm)) = "--prefix"
+		Set npm($i(npm)) = buildDirectory
+		Set npm($i(npm)) = "--no-progress"
+		Set npm($i(npm)) = "--node-flags"
+		Set npm($i(npm)) = "--max-old-space-size=8000"
+		Merge buildStages($i(buildStages)) = npm
+	}
+
+	// Second stage: ng build
+	Set ngb(0) = "npm"
+	Set ngb($i(ngb)) = "run"
+	Set ngb($i(ngb)) = "--prefix"
+	Set ngb($i(ngb)) = buildDirectory
+	Set ngb($i(ngb)) = "build"
+	Set ngb($i(ngb)) = "--node-flags"
+	Set ngb($i(ngb)) = "--max-old-space-size=8000"
+	Set ngb($i(ngb)) = "--"
+	Set ngb($i(ngb)) = "--baseHref="_..baseHref
+	Set ngb($i(ngb)) = "--progress=false"
+	Merge buildStages($i(buildStages)) = ngb
 	
-	$$$ThrowOnError(..MonitorBackgroundBuild(buildScript, buildDirectory, verbose))
+	$$$ThrowOnError(..MonitorBackgroundBuild(buildDirectory, .buildStages, verbose))
 }
 
-ClassMethod MonitorBackgroundBuild(pBuildScript As %String, pBuildDirectory As %String, pVerbose As %Boolean) As %Status [ Internal ]
+Method MonitorBackgroundBuild(pBuildDirectory As %String, ByRef pBuildStages, pVerbose As %Boolean) As %Status [ Internal ]
 {
 	Set tSC = $$$OK
-	Set tErrorOccured = 0
 	Try {
 		Set tStart = $zh
-		Do $System.Event.Clear($Job)
-		Set tErrorFile = ##class(%Library.File).NormalizeFilename("error.log",pBuildDirectory)
-		Set tOutputFile = ##class(%Library.File).NormalizeFilename("output.log",pBuildDirectory)
-		Job ..BuildInBackground(pBuildScript,tOutputFile,tErrorFile)
-		Set tChild = $ZChild
-		
-		// Wait for background job to create files
-		Hang 1
-		
-		Set tErrorStream = ##class(%IO.FileStream).%New()
-		If 'tErrorStream.Open(tErrorFile,"RS",,,.tSC) {
-			$$$ThrowOnError(tSC)
+
+		If pVerbose {
+			Write "Building in ",pBuildStages," stage(s).",!
 		}
-		Set tOutputStream = ##class(%IO.FileStream).%New()
-		If 'tOutputStream.Open(tOutputFile,"RS",,,.tSC) {
-			$$$ThrowOnError(tSC)
-		}
+
+		Do ..CollectHashes(pBuildDirectory, .hashes)
+
+		For i=1:1:pBuildStages {
+			Set tErrorOccured = 0
+
+			// Construct OS-level command args to run in background
+			Set logFile = ##class(%Library.File).TempFilename()
+			Set command = pBuildStages(i,0)
+			Kill jobArgs
+			Merge jobArgs = pBuildStages(i)
+			Kill jobArgs(0)
+			If pVerbose {
+				Write "Running in background: ",command
+				For j=1:1:jobArgs {
+					Write " ",jobArgs(j)
+				}
+				Write !
+			}
+			Set argSub = $Increment(^IRIS.Temp.JobArgs)
+			Kill ^IRIS.Temp.JobArgs(argSub)
+			Merge ^IRIS.Temp.JobArgs(argSub) = jobArgs
+
+			Do $System.Event.Clear($Job)
+			Job ..BuildInBackground(command,logFile,argSub)
+			Set tChild = $ZChild
 		
-		Set tQuitAfterNextRead = 0
-		For {
-			// Check logs.
-			For tStream = tOutputStream,tErrorStream {
+			// Wait for background job to create files
+			Hang 1
+			
+			Set tStream = ##class(%IO.FileStream).%New()
+			If 'tStream.Open(logFile,"RS",,,.tSC) {
+				$$$ThrowOnError(tSC)
+			}
+			
+			Set tQuitAfterNextRead = 0
+			For {
 				For {
-					#dim tStream As %IO.FileStream
-					
 					// Say we're not at the end, since more content may have been written.
 					// If stream was previously set to AtEnd, it won't allow further reads.
 					// Solution for this: close, reopen, and seek to previous position. This allows detection of new content.
@@ -188,7 +224,7 @@ ClassMethod MonitorBackgroundBuild(pBuildScript As %String, pBuildDirectory As %
 						}
 						
 						// Detect npm errors:
-						If $Match(tData,"^npm ERR!") {
+						If $Match(tData,"^npm ERR!.*") {
 							Set tErrorOccured = 1
 						}
 						
@@ -200,33 +236,41 @@ ClassMethod MonitorBackgroundBuild(pBuildScript As %String, pBuildDirectory As %
 						Quit
 					}
 				}
-			}
-			If tQuitAfterNextRead {
-				Quit
-			}
+
+				If (tQuitAfterNextRead) {
+					Quit
+				}
 			
-			// Wait for message.
-			Set tResult = $System.Event.Wait("",1)
-			If (tResult = -1) {
-				// Terminated abnormally.
-				Set tMsg = "Angular build process terminated abnormally."
-				If pVerbose {
-					Write tMsg,!
+				// Wait for message.
+				Set tResult = $System.Event.Wait("",1)
+				If (tResult = -1) {
+					// Terminated abnormally.
+					Set tMsg = "Angular build process terminated abnormally."
+					If pVerbose {
+						Write tMsg,!
+					}
+					Set tQuitAfterNextRead = 1
+					Set tSC = $$$ERROR($$$GeneralError,tMsg)
+				} ElseIf (tResult = 1) {
+					If pVerbose {
+						Write "Angular build process completed. Elapsed time: ",($zh-tStart)," seconds.",!
+					}
+					Set tQuitAfterNextRead = 1
+				} ElseIf (tResult = 0) {
+					// Timed out - this is fine, must still be running. Wait a second before trying again.
+					Hang 1
 				}
-				Set tQuitAfterNextRead = 1
-				Set tSC = $$$ERROR($$$GeneralError,tMsg)
-			} ElseIf (tResult = 1) {
-				If pVerbose {
-					Write "Angular build process completed. Elapsed time: ",($zh-tStart)," seconds.",!
-				}
-				Set tQuitAfterNextRead = 1
-			} ElseIf (tResult = 0) {
-				// Timed out - this is fine, must still be running. Wait a second before trying again.
-				Hang 1
+			}
+
+			If tErrorOccured {
+				// Don't try to run the next stage.
+				Write "Quitting early because an error occurred.",!
+				Quit
 			}
 		}
 	} Catch e {
-		Return e.AsStatus()
+		Write !,e.DisplayString(),!
+		Set tErrorOccured = 1
 	}
 	If tErrorOccured {
 		Set tMsg = "One or more errors occurred in Angular build. See full log for details."
@@ -234,56 +278,50 @@ ClassMethod MonitorBackgroundBuild(pBuildScript As %String, pBuildDirectory As %
 			Write tMsg,!
 		}
 		Set tSC = $$$ERROR($$$GeneralError,tMsg)
+	} Else {
+		// If build succeeded, store hashes.
+		Do ..StoreHashes(pBuildDirectory, .hashes)
 	}
 	Return tSC
 }
 
-ClassMethod BuildInBackground(pBuildScript As %String, stdOut As %String, stdErr As %String) [ Internal ]
+ClassMethod NeedToInstall(directory As %String)
 {
-	Set flags = "/STDOUT="""_stdOut_""" /STDERR="""_stdErr_""""
-	If $$$isUNIX {
-		Do $zf(-100, "", "chmod", "777", pBuildScript)
-		Do $zf(-100, flags, "sh", pBuildScript)
-	} Else {
-		Do $zf(-100, flags, pBuildScript)
+	Set packageUnchanged = ##class(pkg.isc.ipm.js.latestHash).IsUpToDate(directory_"package.json")
+	Set lockUnchanged = ##class(pkg.isc.ipm.js.latestHash).IsUpToDate(directory_"package-lock.json")
+	Quit '(packageUnchanged && lockUnchanged)
+}
+
+Method CollectHashes(directory As %String, ByRef hashes)
+{
+	For file = "package.json","package-lock.json" {
+		Set hashes(file) = ##class(pkg.isc.ipm.js.latestHash).GetCurrentHash(directory_file)
+	}
+}
+
+Method StoreHashes(directory As %String, ByRef hashes)
+{
+	For file = "package.json","package-lock.json" {
+		Do ##class(pkg.isc.ipm.js.latestHash).StoreHash(directory_file,hashes(file))
+	}
+}
+
+ClassMethod BuildInBackground(buildCommand As %String, outFile As %String, argSub As %Integer) [ Internal ]
+{
+	Set flags = "/SHELL /STDOUT="""_outFile_""" /STDERR="""_outFile_""""
+	Try {
+		Merge options = ^IRIS.Temp.JobArgs(argSub)
+		Kill ^IRIS.Temp.JobArgs(argSub)
+
+		// Only npm and npx are allowed.
+		Set buildCommand = $Case(buildCommand,
+			"npm":"npm",
+			"npx":"npx")
+		Do $zf(-100, flags, buildCommand, .options)
+	} Catch e {
+		Do e.Log()
 	}
 	Do $System.Event.Signal($ZParent)
-}
-
-Method GenerateBuildScript(pBuildDirectory As %String, pScriptStream As %Stream.Object, pVerbose As %Boolean) [ Internal, Private ]
-{
-	//navigate to the directory containing the Angular project definition
-	If $$$isUNIX {
-		Do pScriptStream.WriteLine("cd "_##class(%Library.File).NormalizeDirectory(pBuildDirectory))
-	} Else {
-		// For Windows:
-		Do pScriptStream.WriteLine("cd /D "_##class(%Library.File).NormalizeDirectory(pBuildDirectory))
-	}
-	
-	Set buildOptions("baseHref") = ..baseHref
-	
-	//run npm install to update all dependencies.  changes to dependencies are source controled by pacakge.json,
-	//so any changes made during development will be installed on each server during this command
-	
-	Set prefix = $Select($$$isUNIX:"",1:"call ")
-	Do pScriptStream.WriteLine(prefix_"npm "_..installCommand)
-	Do pScriptStream.WriteLine(prefix_..GetBuildString(.buildOptions, pVerbose))
-}
-
-Method GetBuildString(ByRef buildOptions, pVerbose As %Boolean) As %String [ Internal, Private ]
-{
-	Set buildString = "npx ng build"
-
-	Set buildOption = $Order(buildOptions(""), 1)
-	While (buildOption '= "") {
-		set optionValue = buildOptions(buildOption)
-		set buildString = buildString_" --"_buildOption_$Case(optionValue,"":"",:"=")_optionValue
-		set buildOption = $Order(buildOptions(buildOption), 1, optionValue)
-	}
-	If (pVerbose) {
-		Write !,"Building with: """_buildString_""""
-	}
-	Return buildString
 }
 
 /// Overridden to export only /dist/<..appName>

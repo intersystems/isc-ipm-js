@@ -1,3 +1,4 @@
+/// Rsource processor class to handle OpenAPI generation
 Class pkg.isc.ipm.js.openApiProcessor Extends %ZPM.PackageManager.Developer.Processor.Abstract
 {
 
@@ -21,8 +22,6 @@ Property BaseUrl As %String;
 
 /// Called as phase <var>pPhase</var> is executed for the resource. If <var>pResourceHandled</var> is set to true,
 /// then the default behavior for that resource will be bypassed in the current phase.
-/// Currently, this is only used in the Verify phase, because of different handling of intermediate error statuses.
-/// TODO: Implement for standard database resources (.INC, .CLS, etc.)
 Method OnPhase(pPhase As %String, ByRef pParams, Output pResourceHandled As %Boolean = 0) As %Status
 {
     Set sc = $$$OK

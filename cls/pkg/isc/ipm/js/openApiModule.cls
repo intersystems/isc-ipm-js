@@ -1,3 +1,7 @@
+/// Extends the base Module lifecycle to add a "Generate" phase
+/// This phase supports really simple generation of client code from OpenAPI specs
+/// via <class>pkg.isc.ipm.js.openApiProcessor</class> and:
+/// <code>zpm "myapp generate"</code>
 Class pkg.isc.ipm.js.openApiModule Extends %ZPM.PackageManager.Developer.Lifecycle.Module
 {
 
