@@ -1,4 +1,4 @@
-/// Rsource processor class to handle OpenAPI generation
+/// Resource processor class to handle OpenAPI generation
 Class pkg.isc.ipm.js.openApiProcessor Extends %ZPM.PackageManager.Developer.Processor.Abstract
 {
 
@@ -16,7 +16,7 @@ Property TargetFolder As %String [ Required ];
 
 Property Generator As %String;
 
-Property AdditionalProperties As %String(MAXLEN="");
+Property AdditionalProperties As %String(MAXLEN = "");
 
 Property BaseUrl As %String;
 
