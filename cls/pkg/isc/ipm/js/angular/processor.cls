@@ -1,5 +1,5 @@
 /// Resource processor class to manage Angular build, deployment, and packaging
-Class pkg.isc.ipm.js.angular.processor Extends %ZPM.PackageManager.Developer.Processor.Abstract
+Class pkg.isc.ipm.js.angular.processor Extends pkg.isc.ipm.js.base.processor
 {
 
 /// Description of resource processor class (shown in UI)
@@ -8,8 +8,8 @@ Parameter DESCRIPTION As STRING = "Runs npm install and Angular 6+ builds in a s
 /// Comma-separated list of resource attribute names that this processor uses
 Parameter ATTRIBUTES As STRING = "baseHref,clearTarget,appName,installCommand";
 
-/// OS-dependent build script name
-Parameter BUILDSCRIPT As COSEXPRESSION = "$Select($$$isUNIX:""angularBuild.sh"",1:""angularBuild.bat"")";
+/// Subtype keyword (e.g., Angular, React)
+Parameter FLAVOR = "Angular";
 
 /// Base URL for the application
 Property baseHref As %String [ Required ];
@@ -23,88 +23,46 @@ Property appName As %String;
 /// Either "install" or "ci"; default is "ci"
 Property installCommand As %String(VALUELIST = ",install,ci") [ InitialExpression = "ci" ];
 
-Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
+Method GetTargetDirectory() As %String [ Abstract ]
 {
-	Set tSC = $$$OK
-	Try {
-		$$$ThrowOnError(##super(pPhase, .pParams))
-		Do ..CleanSettings()
-		Set verbose = $Get(pParams("Verbose"),0)
-		If (pPhase = "Compile") && ##class(%Library.File).Exists(..ResourceReference.Module.Root_..ResourceReference.Name_"/package.json") {
-			// Compile the Angular UI. Supposes npm is installed and on the PATH, but that's it.
-			Do ..RunAngularBuild(.pParams)
-		} ElseIf (pPhase = "Activate") {
-			// Move files to the right place.
-			Set sourceDir = ##class(%Library.File).NormalizeDirectory(..ResourceReference.Module.Root_..ResourceReference.Name_"/dist/"_..appName)
-			Set targetDir = $System.CSP.GetFileName(..baseHref)
-			Set testFile = sourceDir_"index.html"
-			If '##class(%Library.File).Exists(testFile) {
-				$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("File '%1' does not exist; will not activate angular UI changes.",testFile)))
-			}
-			If verbose {
-				Write !,"Activating Angular application changes..."
-				Write !,"Copying ",sourceDir," to ",targetDir
-			}
-			$$$ThrowOnError(##class(%ZPM.PackageManager.Developer.File).CopyDir(sourceDir,targetDir,..clearTarget))
-			// Clear CSPGateway caches...
-			If verbose {
-				Write !,"Clearing CSPGateway caches..."
-			}
-			#dim registry As %CSP.Mgr.GatewayRegistry
-			Set registry = $System.CSP.GetGatewayRegistry()
-			$$$ThrowOnError(registry.RemoveFilesFromCaches(..baseHref_"*"))
-			If verbose {
-				Write !,"Angular UI changes activated."
-			}
-		}
-	} Catch e {
-		Set tSC = e.AsStatus()
-	}
-	Quit tSC
+	Quit $System.CSP.GetFileName(..baseHref)
 }
 
-Method OnAfterPhase(pPhase As %String, ByRef pParams) As %Status
+Method GetBuildSubdirectory() As %String [ Abstract ]
 {
-	Set tSC = $$$OK
-	Try {
-		$$$ThrowOnError(##super(pPhase, .pParams))
-		Do ..CleanSettings()
-		Set verbose = $Get(pParams("Verbose"),0)
-		If (pPhase = "Activate") {
-			// Done as final step to get around copy order issues
-			Set indexHtml = $System.CSP.GetFileName(..baseHref)_"index.html"
-			If ##class(%Library.File).Exists(indexHtml) {
-				If verbose {
-					Write !,"Changing baseHref to '",..baseHref,"' in ",indexHtml
-				}
-				Do ..ReplaceInTextFile(indexHtml,"{{baseHref}}",..baseHref)
-				Do ..ReplaceInTextFile(indexHtml,"{{baseHrefLower}}",$ZConvert(..baseHref,"L"))
-			}
-		}
-	} Catch e {
-		Set tSC = e.AsStatus()
+	Quit "/dist/"_..appName
+}
+
+Method PerformExportFileReplacements(pFullExportPath As %String, pItemName As %String)
+{
+	// Generalize for installation elsewhere
+	Set indexHtml = ##class(%File).NormalizeFilenameWithSpaces(pFullExportPath_pItemName_"/dist/"_..appName_"/index.html")
+	Do ..ReplaceInTextFile(indexHtml,..baseHref,"{{baseHref}}")
+	Do ..ReplaceInTextFile(indexHtml,$ZConvert(..baseHref,"L"),"{{baseHrefLower}}")
+}
+
+Method PerformActivateFileReplacements()
+{
+	// Done as final step to get around copy order issues
+	Set indexHtml = $System.CSP.GetFileName(..baseHref)_"index.html"
+	If ##class(%Library.File).Exists(indexHtml) {
+		Do ..ReplaceInTextFile(indexHtml,"{{baseHref}}",..baseHref)
+		Do ..ReplaceInTextFile(indexHtml,"{{baseHrefLower}}",$ZConvert(..baseHref,"L"))
 	}
-	Quit tSC
+}
+
+Method GetBuildCommand(buildDirectory As %String, Output command)
+{
+	Do ##super(buildDirectory,.command)
+	Set command($i(command)) = "--"
+	Set command($i(command)) = "--baseHref="_..baseHref
+	Set command($i(command)) = "--progress=false"
 }
 
 Method CleanSettings()
 {
 	// Ensure baseHref is correctly formatted.
-	Set baseHref = ..baseHref
-	
-	If (baseHref '= "") {
-		If $Extract(baseHref,*) '= "/" {
-			Set baseHref = baseHref_"/"
-		}
-	}
-	
-	Set searchStr = "/"_$Namespace_"/"
-	If (baseHref [ searchStr) {
-		Set baseHref = $Replace(baseHref,searchStr,$ZConvert(searchStr,"L"))
-	}
-	
-	// Store for later use (in Activate phase)
-	Set ..baseHref = baseHref
+	Set ..baseHref = ..SanitizeWebAppBase(..baseHref)
 	
 	// Ensure appName is defined
 	If ..appName = "" {
@@ -114,283 +72,5 @@ Method CleanSettings()
 	}
 }
 
-Method RunAngularBuild(ByRef pParams) [ Internal ]
-{
-	If $Data(pParams("Angular","NoBuild"),flag)#2 && flag {
-		Quit
-	}
-
-	Set verbose = $Get(pParams("Verbose"),0)
-	If verbose {
-		Write !!,"Running Angular build script...",!
-	}
-
-	Set buildDirectory = ##class(%Library.File).NormalizeDirectory(..ResourceReference.Module.Root _ ..ResourceReference.Name)
-
-	If ..NeedToInstall(buildDirectory) || ($Data(pParams("Angular","ForceInstall"),flag)#2 && flag) {
-		// First stage: npm ci
-		Set npm(0) = "npm"
-		Set npm($i(npm)) = ..installCommand
-		Set npm($i(npm)) = "--prefix"
-		Set npm($i(npm)) = buildDirectory
-		Set npm($i(npm)) = "--no-progress"
-		Set npm($i(npm)) = "--node-flags"
-		Set npm($i(npm)) = "--max-old-space-size=8000"
-		Merge buildStages($i(buildStages)) = npm
-	}
-
-	// Second stage: ng build
-	Set ngb(0) = "npm"
-	Set ngb($i(ngb)) = "run"
-	Set ngb($i(ngb)) = "--prefix"
-	Set ngb($i(ngb)) = buildDirectory
-	Set ngb($i(ngb)) = "build"
-	Set ngb($i(ngb)) = "--node-flags"
-	Set ngb($i(ngb)) = "--max-old-space-size=8000"
-	Set ngb($i(ngb)) = "--"
-	Set ngb($i(ngb)) = "--baseHref="_..baseHref
-	Set ngb($i(ngb)) = "--progress=false"
-	Merge buildStages($i(buildStages)) = ngb
-	
-	$$$ThrowOnError(..MonitorBackgroundBuild(buildDirectory, .buildStages, verbose))
 }
 
-Method MonitorBackgroundBuild(pBuildDirectory As %String, ByRef pBuildStages, pVerbose As %Boolean) As %Status [ Internal ]
-{
-	Set tSC = $$$OK
-	Try {
-		Set tStart = $zh
-
-		If pVerbose {
-			Write "Building in ",pBuildStages," stage(s).",!
-		}
-
-		Do ..CollectHashes(pBuildDirectory, .hashes)
-
-		For i=1:1:pBuildStages {
-			Set tErrorOccured = 0
-
-			// Construct OS-level command args to run in background
-			Set logFile = ##class(%Library.File).TempFilename()
-			Set command = pBuildStages(i,0)
-			Kill jobArgs
-			Merge jobArgs = pBuildStages(i)
-			Kill jobArgs(0)
-			If pVerbose {
-				Write "Running in background: ",command
-				For j=1:1:jobArgs {
-					Write " ",jobArgs(j)
-				}
-				Write !
-			}
-			Set argSub = $Increment(^IRIS.Temp.JobArgs)
-			Kill ^IRIS.Temp.JobArgs(argSub)
-			Merge ^IRIS.Temp.JobArgs(argSub) = jobArgs
-
-			Do $System.Event.Clear($Job)
-			Job ..BuildInBackground(command,logFile,argSub)
-			Set tChild = $ZChild
-		
-			// Wait for background job to create files
-			Hang 1
-			
-			Set tStream = ##class(%IO.FileStream).%New()
-			If 'tStream.Open(logFile,"RS",,,.tSC) {
-				$$$ThrowOnError(tSC)
-			}
-			
-			Set tQuitAfterNextRead = 0
-			For {
-				For {
-					// Say we're not at the end, since more content may have been written.
-					// If stream was previously set to AtEnd, it won't allow further reads.
-					// Solution for this: close, reopen, and seek to previous position. This allows detection of new content.
-					Set tPosition = tStream.Position
-					Do tStream.Close(.tSC)
-					$$$ThrowOnError(tSC)
-					Do tStream.Open(tStream.Name,"RS",,,.tSC)
-					$$$ThrowOnError(tSC)
-					Do tStream.Seek(tPosition,.tSC)
-					$$$ThrowOnError(tSC)
-					
-					Set tTimeout = 1
-					// Read a line if we can
-					Set tData = tStream.ReadLine($$$MaxStringLength,.tTimeout,.tSC)
-					$$$ThrowOnError(tSC)
-					If 'tTimeout && '(tStream.AtEnd && (tData = "")) {
-						// We have content if there was no timeout, unless we have reached the end of the stream without any data.
-						If (pVerbose) {
-							Write tData,!
-						}
-						
-						// Detect npm errors:
-						If $Match(tData,"^npm ERR!.*") {
-							Set tErrorOccured = 1
-						}
-						
-						// Detect ng build errors:
-						If $Match(tData,"^ERROR.*") {
-							Set tErrorOccured = 1
-						}
-					} Else {
-						Quit
-					}
-				}
-
-				If (tQuitAfterNextRead) {
-					Quit
-				}
-			
-				// Wait for message.
-				Set tResult = $System.Event.Wait("",1)
-				If (tResult = -1) {
-					// Terminated abnormally.
-					Set tMsg = "Angular build process terminated abnormally."
-					If pVerbose {
-						Write tMsg,!
-					}
-					Set tQuitAfterNextRead = 1
-					Set tSC = $$$ERROR($$$GeneralError,tMsg)
-				} ElseIf (tResult = 1) {
-					If pVerbose {
-						Write "Angular build process completed. Elapsed time: ",($zh-tStart)," seconds.",!
-					}
-					Set tQuitAfterNextRead = 1
-				} ElseIf (tResult = 0) {
-					// Timed out - this is fine, must still be running. Wait a second before trying again.
-					Hang 1
-				}
-			}
-
-			If tErrorOccured {
-				// Don't try to run the next stage.
-				Write "Quitting early because an error occurred.",!
-				Quit
-			}
-		}
-	} Catch e {
-		Write !,e.DisplayString(),!
-		Set tErrorOccured = 1
-	}
-	If tErrorOccured {
-		Set tMsg = "One or more errors occurred in Angular build. See full log for details."
-		If (pVerbose) {
-			Write tMsg,!
-		}
-		Set tSC = $$$ERROR($$$GeneralError,tMsg)
-	} Else {
-		// If build succeeded, store hashes.
-		Do ..StoreHashes(pBuildDirectory, .hashes)
-	}
-	Return tSC
-}
-
-ClassMethod NeedToInstall(directory As %String)
-{
-	Set packageUnchanged = ##class(pkg.isc.ipm.js.latestHash).IsUpToDate(directory_"package.json")
-	Set lockUnchanged = ##class(pkg.isc.ipm.js.latestHash).IsUpToDate(directory_"package-lock.json")
-	Quit '(packageUnchanged && lockUnchanged)
-}
-
-Method CollectHashes(directory As %String, ByRef hashes)
-{
-	For file = "package.json","package-lock.json" {
-		Set hashes(file) = ##class(pkg.isc.ipm.js.latestHash).GetCurrentHash(directory_file)
-	}
-}
-
-Method StoreHashes(directory As %String, ByRef hashes)
-{
-	For file = "package.json","package-lock.json" {
-		Do ##class(pkg.isc.ipm.js.latestHash).StoreHash(directory_file,hashes(file))
-	}
-}
-
-ClassMethod BuildInBackground(buildCommand As %String, outFile As %String, argSub As %Integer) [ Internal ]
-{
-	Set flags = "/SHELL /STDOUT="""_outFile_""" /STDERR="""_outFile_""""
-	Try {
-		Merge options = ^IRIS.Temp.JobArgs(argSub)
-		Kill ^IRIS.Temp.JobArgs(argSub)
-
-		// Only npm and npx are allowed.
-		Set buildCommand = $Case(buildCommand,
-			"npm":"npm",
-			"npx":"npx")
-		Do $zf(-100, flags, buildCommand, .options)
-	} Catch e {
-		Do e.Log()
-	}
-	Do $System.Event.Signal($ZParent)
-}
-
-/// Overridden to export only /dist/<..appName>
-Method OnExportItem(pFullExportPath As %String, pItemName As %String, ByRef pItemParams, ByRef pParams, Output pItemHandled As %Boolean) As %Status
-{
-	Set pItemHandled = 1
-	Set tModule = ..ResourceReference.Module
-	Set tVerbose = +$Get(pParams("Verbose"))
-	
-	If (tModule.Root = "") {
-		Set tSC = $$$ERROR($$$GeneralError,$$$FormatText("No module root configured for '%1'",tSrcModule))
-		Quit
-	}
-	
-	If '##class(%File).DirectoryExists(tModule.Root) {
-		Set tSC = $$$ERROR($$$GeneralError,$$$FormatText("Directory %2, listed as root for module '%1', does not exist.",tSrcModule,tModule.Root))
-		Quit
-	}
-	
-	Set tSourcePath = ##class(%File).NormalizeFilenameWithSpaces(tModule.Root_pItemName_"/dist/"_..appName)
-	Set tExportPath = ##class(%File).NormalizeFilenameWithSpaces(pFullExportPath_pItemName_"/dist/"_..appName)
-	Set tSC = $$$OK
-	Set tDirectory = ##class(%File).GetDirectory(tExportPath,1)
-	If '##class(%File).DirectoryExists(tDirectory) {
-		Set tGood = ##class(%File).CreateDirectoryChain(tDirectory,.tReturn)
-		If 'tGood {
-			Set tLastErr = $Get(%objlasterror)
-			Set tSC = $$$EMBEDSC($$$ERROR($$$GeneralError,$$$FormatText("Error creating directory '%1': %2",tDirectory,tReturn)),tLastErr)
-			Quit
-		}
-		Write:tVerbose !,"Created ",tDirectory
-	}
-	If ##class(%File).DirectoryExists(tSourcePath) {
-		// NOTE: Does not overlay directories.
-		Set tSourcePath = ##class(%File).NormalizeDirectory(tSourcePath)
-		Set tExportPath = ##class(%File).NormalizeDirectory(tExportPath)
-		Set tSC = ##class(%ZPM.PackageManager.Developer.File).CopyDir(tSourcePath,tExportPath)
-		If $$$ISERR(tSC) {
-			Quit
-		}
-		Write:tVerbose !,tSourcePath," -> ",tExportPath
-	} ElseIf ##class(%File).Exists(tSourcePath) {
-		Set tGood = ##class(%File).CopyFile(tSourcePath,tExportPath,1,.tReturn)
-		If 'tGood {
-			Set tSC = $$$ERROR($$$GeneralError,$$$FormatText("Error copying file '%1' to '%2': %3",tSourcePath,tExportPath,tReturn))
-			Quit
-		}
-		Write:tVerbose !,tSourcePath," -> ",tExportPath
-	}
-	
-	Set indexHtml = ##class(%File).NormalizeFilenameWithSpaces(pFullExportPath_pItemName_"/dist/"_..appName_"/index.html")
-	Do ..ReplaceInTextFile(indexHtml,..baseHref,"{{baseHref}}")
-	Do ..ReplaceInTextFile(indexHtml,$ZConvert(..baseHref,"L"),"{{baseHrefLower}}")
-	Quit $$$OK
-}
-
-ClassMethod ReplaceInTextFile(file As %String, string As %String, replaceString As %String)
-{
-	Set stream = ##class(%Stream.FileCharacter).%OpenId(file,,.sc)
-	$$$ThrowOnError(sc)
-	While 'stream.AtEnd {
-		Set lines($i(lines)) = $Replace(stream.ReadLine(),string,replaceString)
-	}
-	$$$ThrowOnError(stream.Rewind())
-	$$$ThrowOnError(stream.Clear())
-	For i=1:1:lines {
-		$$$ThrowOnError(stream.WriteLine(lines(i)))
-	}
-	$$$ThrowOnError(stream.%Save())
-}
-
-}
