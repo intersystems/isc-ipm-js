@@ -23,12 +23,12 @@ Property appName As %String;
 /// Either "install" or "ci"; default is "ci"
 Property installCommand As %String(VALUELIST = ",install,ci") [ InitialExpression = "ci" ];
 
-Method GetTargetDirectory() As %String [ Abstract ]
+Method GetTargetDirectory() As %String
 {
 	Quit $System.CSP.GetFileName(..baseHref)
 }
 
-Method GetBuildSubdirectory() As %String [ Abstract ]
+Method GetBuildSubdirectory() As %String
 {
 	Quit "/dist/"_..appName
 }
