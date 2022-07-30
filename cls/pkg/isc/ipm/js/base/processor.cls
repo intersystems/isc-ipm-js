@@ -284,14 +284,14 @@ ClassMethod NeedToInstall(directory As %String)
 	Quit '(packageUnchanged && lockUnchanged)
 }
 
-Method CollectHashes(directory As %String, ByRef hashes)
+ClassMethod CollectHashes(directory As %String, ByRef hashes)
 {
 	For file = "package.json","package-lock.json" {
 		Set hashes(file) = ##class(pkg.isc.ipm.js.latestHash).GetCurrentHash(directory_file)
 	}
 }
 
-Method StoreHashes(directory As %String, ByRef hashes)
+ClassMethod StoreHashes(directory As %String, ByRef hashes)
 {
 	For file = "package.json","package-lock.json" {
 		Do ##class(pkg.isc.ipm.js.latestHash).StoreHash(directory_file,hashes(file))
