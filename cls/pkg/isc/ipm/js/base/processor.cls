@@ -29,7 +29,11 @@ Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
 		} ElseIf (pPhase = "Activate") {
 			// Move files to the right place.
 			Set sourceDir = ##class(%Library.File).NormalizeDirectory(..GetSourceDirectory())
-			Set targetDir = $System.CSP.GetFileName(..GetTargetDirectory())
+			Set targetDir = ..GetTargetDirectory()
+			If (targetDir = "") {
+				// Should never happen, but good to be safe (and avoid using working directory)
+				$$$ThrowStatus($$$ERROR($$$GeneralError,"Target directory not specified."))
+			}
 			Set testFile = sourceDir_"index.html"
 			If '##class(%Library.File).Exists(testFile) {
 				$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("File '%1' does not exist; will not activate %2 UI changes.",testFile,..#FLAVOR)))
@@ -412,4 +416,3 @@ ClassMethod SanitizeWebAppBase(base As %String) As %String
 }
 
 }
-
