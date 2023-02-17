@@ -16,8 +16,6 @@ Property clearTarget As %Boolean [ InitialExpression = 1 ];
 /// Either "install" or "ci"; default is "ci"
 Property installCommand As %String(VALUELIST = ",install,ci") [ InitialExpression = "ci" ];
 
-Property PromotedFiles As %Boolean [ InitialExpression = 0 ];
-
 Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
 {
 	Set tSC = $$$OK
@@ -29,7 +27,7 @@ Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
 			// Compile the UI. Supposes npm is installed and on the PATH, but that's it.
 			Do ..RunBuild(.pParams)
 		} ElseIf (pPhase = "Activate") {
-			Do ..PromoteFiles(verbose)
+			Do ..PromoteFiles(verbose,.pParams)
 		}
 	} Catch e {
 		Set tSC = e.AsStatus()
@@ -45,8 +43,8 @@ Method OnAfterPhase(pPhase As %String, ByRef pParams) As %Status
 		Do ..CleanSettings()
 		Set verbose = $Get(pParams("Verbose"),0)
 		If (pPhase = "Activate") {
-			If '..PromotedFiles {
-				Do ..PromoteFiles(verbose)
+			If '..PromotedFiles(.pParams) {
+				Do ..PromoteFiles(verbose,.pParams)
 			}
             Do ..PerformActivateFileReplacements()
 		}
@@ -56,7 +54,12 @@ Method OnAfterPhase(pPhase As %String, ByRef pParams) As %Status
 	Quit tSC
 }
 
-Method PromoteFiles(verbose As %Boolean)
+Method PromotedFiles(ByRef pParams) As %Boolean
+{
+	Quit $Get(pParams($classname(),..ResourceReference.Name,"PromotedFiles"),0)
+}
+
+Method PromoteFiles(verbose As %Boolean, ByRef pParams)
 {
 	// Move files to the right place.
 	Set sourceDir = ##class(%Library.File).NormalizeDirectory(..GetSourceDirectory())
@@ -84,7 +87,7 @@ Method PromoteFiles(verbose As %Boolean)
 	If verbose {
 		Write !,..#FLAVOR," UI changes activated."
 	}
-	Set ..PromotedFiles = 1
+	Set pParams($classname(),..ResourceReference.Name,"PromotedFiles") = 1
 }
 
 Method CleanSettings() [ Abstract ]
