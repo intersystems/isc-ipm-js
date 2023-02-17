@@ -27,32 +27,7 @@ Method OnBeforePhase(pPhase As %String, ByRef pParams) As %Status
 			// Compile the UI. Supposes npm is installed and on the PATH, but that's it.
 			Do ..RunBuild(.pParams)
 		} ElseIf (pPhase = "Activate") {
-			// Move files to the right place.
-			Set sourceDir = ##class(%Library.File).NormalizeDirectory(..GetSourceDirectory())
-			Set targetDir = ..GetTargetDirectory()
-			If (targetDir = "") {
-				// Should never happen, but good to be safe (and avoid using working directory)
-				$$$ThrowStatus($$$ERROR($$$GeneralError,"Target directory not specified."))
-			}
-			Set testFile = sourceDir_"index.html"
-			If '##class(%Library.File).Exists(testFile) {
-				$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("File '%1' does not exist; will not activate %2 UI changes.",testFile,..#FLAVOR)))
-			}
-			If verbose {
-				Write !,"Activating "_..#FLAVOR_" application changes..."
-				Write !,"Copying ",sourceDir," to ",targetDir
-			}
-			$$$ThrowOnError(##class(%ZPM.PackageManager.Developer.File).CopyDir(sourceDir,targetDir,..clearTarget))
-			// Clear CSPGateway caches...
-			If verbose {
-				Write !,"Clearing CSPGateway caches..."
-			}
-			#dim registry As %CSP.Mgr.GatewayRegistry
-			Set registry = $System.CSP.GetGatewayRegistry()
-			$$$ThrowOnError(registry.RemoveFilesFromCaches(..GetTargetDirectory()_"*"))
-			If verbose {
-				Write !,..#FLAVOR," UI changes activated."
-			}
+			Do ..PromoteFiles(verbose,.pParams)
 		}
 	} Catch e {
 		Set tSC = e.AsStatus()
@@ -68,12 +43,51 @@ Method OnAfterPhase(pPhase As %String, ByRef pParams) As %Status
 		Do ..CleanSettings()
 		Set verbose = $Get(pParams("Verbose"),0)
 		If (pPhase = "Activate") {
+			If '..PromotedFiles(.pParams) {
+				Do ..PromoteFiles(verbose,.pParams)
+			}
             Do ..PerformActivateFileReplacements()
 		}
 	} Catch e {
 		Set tSC = e.AsStatus()
 	}
 	Quit tSC
+}
+
+Method PromotedFiles(ByRef pParams) As %Boolean
+{
+	Quit $Get(pParams($classname(),..ResourceReference.Name,"PromotedFiles"),0)
+}
+
+Method PromoteFiles(verbose As %Boolean, ByRef pParams)
+{
+	// Move files to the right place.
+	Set sourceDir = ##class(%Library.File).NormalizeDirectory(..GetSourceDirectory())
+	Set targetDir = ..GetTargetDirectory()
+	If (targetDir = "") {
+		// May happen due to a chicken-and-egg problem in module activation.
+		Quit
+	}
+	Set testFile = sourceDir_"index.html"
+	If '##class(%Library.File).Exists(testFile) {
+		$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("File '%1' does not exist; will not activate %2 UI changes.",testFile,..#FLAVOR)))
+	}
+	If verbose {
+		Write !,"Activating "_..#FLAVOR_" application changes..."
+		Write !,"Copying ",sourceDir," to ",targetDir
+	}
+	$$$ThrowOnError(##class(%ZPM.PackageManager.Developer.File).CopyDir(sourceDir,targetDir,..clearTarget))
+	// Clear CSPGateway caches...
+	If verbose {
+		Write !,"Clearing CSPGateway caches..."
+	}
+	#dim registry As %CSP.Mgr.GatewayRegistry
+	Set registry = $System.CSP.GetGatewayRegistry()
+	$$$ThrowOnError(registry.RemoveFilesFromCaches(..GetTargetDirectory()_"*"))
+	If verbose {
+		Write !,..#FLAVOR," UI changes activated."
+	}
+	Set pParams($classname(),..ResourceReference.Name,"PromotedFiles") = 1
 }
 
 Method CleanSettings() [ Abstract ]
