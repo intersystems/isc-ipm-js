@@ -55,7 +55,7 @@ Method GetBuildCommand(buildDirectory As %String, Output command)
 {
 	Do ##super(buildDirectory,.command)
 	Set command($i(command)) = "--"
-	Set command($i(command)) = "--baseHref="_..baseHref
+	Set command($i(command)) = "--base-href="_..baseHref
 	Set command($i(command)) = "--progress=false"
 }
 
