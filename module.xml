@@ -2,7 +2,7 @@
 <Export generator="Cache" version="25">
 <Document name="isc.ipm.js.ZPM"><Module>
   <Name>isc.ipm.js</Name>
-  <Version>1.1.3</Version>
+  <Version>1.1.4</Version>
   <Dependencies>
     <ModuleReference>
       <Name>isc.json</Name>
