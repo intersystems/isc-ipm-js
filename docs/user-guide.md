@@ -66,7 +66,7 @@ The angular build process accepts two flags (in relevant zpm module lifecycle co
 
 When you package your solution (e.g., via `zpm "your-app publish"`) the *built* Angular UI will be included, so the build will not need to run for clients downloading your package from a registry (e.g., using [zpm-registry](https://openexchange.intersystems.com/package/zpm-registry)).
 
-`npm ci` can be slow sometimes, which is why it is only called when necessary. `ng build` should generally be relatively fast. If it seems to get stuck or generally takes longer than you expect, consider increasing --max-old-space-size via the NODE_OPTIONS environment variable. That is, se `NODE_OPTIONS=--max-old-space-size=8192` or some other reasonable value; see [this StackOverflow post](https://stackoverflow.com/questions/48387040/how-do-i-determine-the-correct-max-old-space-size-for-node-js) for some relevant discussion on how to determine a reasonable value.
+`npm ci` can be slow sometimes, which is why it is only called when necessary. `ng build` should generally be relatively fast. If it seems to get stuck or generally takes longer than you expect, consider increasing --max-old-space-size via the NODE_OPTIONS environment variable. That is, set `NODE_OPTIONS=--max-old-space-size=8192` or some other reasonable value; see [this StackOverflow post](https://stackoverflow.com/questions/48387040/how-do-i-determine-the-correct-max-old-space-size-for-node-js) for some relevant discussion on how to determine a reasonable value.
 
 ## Web application for Angular Path Location Strategy
 
