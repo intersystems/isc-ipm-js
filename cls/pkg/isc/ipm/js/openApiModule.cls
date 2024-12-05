@@ -5,7 +5,7 @@
 Class pkg.isc.ipm.js.openApiModule Extends %ZPM.PackageManager.Developer.Lifecycle.Module
 {
 
-Parameter PHASES As COSEXPRESSION = "##class(%ZPM.PackageManager.Developer.Lifecycle.Module).#PHASES _ $ListBuild(""Generate"")";
+Parameter PHASES As COSEXPRESSION = "$Select(##class(%Dictionary.ClassDefinition).%ExistsId(""%IPM.Lifecycle.Module""):##class(%IPM.Lifecycle.Module).#PHASES, 1:##class(%ZPM.PackageManager.Developer.Lifecycle.Module).#PHASES) _ $ListBuild(""Generate"")";
 
 /// Custom phase: Generate
 /// Generates OpenAPI sources (via openApiProcessor)
