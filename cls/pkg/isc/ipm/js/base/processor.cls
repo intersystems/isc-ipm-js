@@ -92,7 +92,7 @@ Method PromoteFiles(verbose As %Boolean, ByRef pParams)
 
 ClassMethod CopyDir(pSource As %String, pDest As %String, pDeleteFirst As %Boolean = 1, pVerbose As %Boolean = 0) As %Status
 {
-	If ##class(%Dictionary.Definintion).%ExistsId("%IPM.Utils.File") {
+	If ##class(%Dictionary.Definition).%ExistsId("%IPM.Utils.File") {
 		Return ##class(%IPM.Utils.File).CopyDir(pSource, pDest, pDeleteFirst, pVerbose)
 	} Else {
 		Return ##class(%ZPM.PackageManager.Developer.File).CopyDir(pSource, pDest, pDeleteFirst, pVerbose)
