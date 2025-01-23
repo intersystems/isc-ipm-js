@@ -7,13 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [1.1.4] - 2025-01-23
-### Added
-- Added compatibility with IPM 0.9.x versions
+### Fixed
+- Now compatible with IPM 0.9.x versions
 
 ## [1.1.3] - 2024-02-06
 ### Fixed
 - Added support for Angular 14+ by changing cli options to kebab-case
-
 
 ## [1.1.2] - 2023-02-17
 ### Fixed
