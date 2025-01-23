@@ -76,7 +76,7 @@ Method PromoteFiles(verbose As %Boolean, ByRef pParams)
 		Write !,"Activating "_..#FLAVOR_" application changes..."
 		Write !,"Copying ",sourceDir," to ",targetDir
 	}
-	$$$ThrowOnError(##class(%ZPM.PackageManager.Developer.File).CopyDir(sourceDir,targetDir,..clearTarget))
+	$$$ThrowOnError(..CopyDir(sourceDir,targetDir,..clearTarget))
 	// Clear CSPGateway caches...
 	If verbose {
 		Write !,"Clearing CSPGateway caches..."
@@ -88,6 +88,15 @@ Method PromoteFiles(verbose As %Boolean, ByRef pParams)
 		Write !,..#FLAVOR," UI changes activated."
 	}
 	Set pParams($classname(),..ResourceReference.Name,"PromotedFiles") = 1
+}
+
+ClassMethod CopyDir(pSource As %String, pDest As %String, pDeleteFirst As %Boolean = 1, pVerbose As %Boolean = 0) As %Status
+{
+	If ##class(%Dictionary.ClassDefinition).%ExistsId("%IPM.Utils.File") {
+		Return ##class(%IPM.Utils.File).CopyDir(pSource, pDest, pDeleteFirst, pVerbose)
+	} Else {
+		Return ##class(%ZPM.PackageManager.Developer.File).CopyDir(pSource, pDest, pDeleteFirst, pVerbose)
+	}
 }
 
 Method CleanSettings() [ Abstract ]
@@ -368,7 +377,7 @@ Method OnExportItem(pFullExportPath As %String, pItemName As %String, ByRef pIte
 		// NOTE: Does not overlay directories.
 		Set tSourcePath = ##class(%File).NormalizeDirectory(tSourcePath)
 		Set tExportPath = ##class(%File).NormalizeDirectory(tExportPath)
-		Set tSC = ##class(%ZPM.PackageManager.Developer.File).CopyDir(tSourcePath,tExportPath)
+		Set tSC = ..CopyDir(tSourcePath,tExportPath)
 		If $$$ISERR(tSC) {
 			Quit
 		}
